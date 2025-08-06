@@ -13,34 +13,42 @@ class DesktopManager:
 
         self.widgets = []
 
-        default = next((p for p in self.profiles if p["name"] == "Default"), None)
-        if not default:
-            file_path, _ = QFileDialog.getOpenFileName(
-                None,
-                "Select Image or GIF to Put on Desktop",
-                "",
-                "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)"
-            )
-            if not file_path: sys.exit(0)
-
-            # Create Default profile with one image
-            default = {
-                "name": "Default",
-                "media": [{
-                    "path": file_path,
-                    "x": 100,
-                    "y": 100,
-                    "width": 150,
-                    "height": 150
-                }]
-            }
-            self.profiles.append(default)
-        self.load_profile(default)
+        self.try_load_default_profile()
         sys.exit(self.app.exec_())
 
-    def create_widget(self, path):
-        self.widgets.append(MediaWidget(path, self.show_context_menu))
-    
+    def try_load_default_profile(self):
+        default = next((p for p in self.profiles if p["name"] == "Default"), None)
+        if not default:
+            default = self.prompt_for_default_profile()
+            if not default: # user cancelled
+                sys.exit(0)
+            self.profiles.append(default)
+            save_profiles(self.profiles)
+
+        self.current_profile_name = "Default"
+        self.load_profile(default)
+
+    def prompt_for_default_profile(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            None,
+            "Select Image or GIF to Put on Desktop",
+            "",
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)"
+        )
+        if not file_path:
+            return None
+
+        return {
+            "name": "Default",
+            "media": [{
+                "path": file_path,
+                "x": 100,
+                "y": 100,
+                "width": 150,
+                "height": 150
+            }]
+        }
+
     def create_widget(self, path):
         callbacks = {
             "context_menu": self.show_context_menu,
@@ -54,8 +62,14 @@ class DesktopManager:
             self.widgets.remove(widget)
             widget.close()
             widget.deleteLater()
-        self.request_save()
-    
+        
+        if self.widgets:
+            self.save_current_profile()
+        else: # if no widgets remain, delete the profile
+            self.profiles = [p for p in self.profiles if p["name"] != self.current_profile_name]
+            save_profiles(self.profiles)
+            self.try_load_default_profile()
+
     def delete_all_widgets(self):
         for widget in self.widgets:
             widget.close()
@@ -77,7 +91,10 @@ class DesktopManager:
             profile_menu = QMenu("Profiles")
             for profile in self.profiles:
                 action = profile_menu.addAction(profile["name"])
-                action.triggered.connect(lambda checked=False, p=profile: self.load_profile(p))
+                if profile["name"] == self.current_profile_name:
+                    action.setEnabled(False)
+                else:
+                    action.triggered.connect(lambda checked=False, p=profile: self.load_profile(p))
             menu.addMenu(profile_menu)
 
         new_profile_action = menu.addAction("New Profile...")
@@ -115,12 +132,12 @@ class DesktopManager:
             self.create_widget(path)
             self.widgets[-1].setGeometry(x, y, w, h)
         self.request_save()
-    
+
     def request_save(self):
         if not self.save_scheduled:
             self.save_scheduled = True
             QTimer.singleShot(0, self.save_current_profile)
-    
+
     def save_current_profile(self):
         self.save_scheduled = False # reset flag
         if not self.current_profile_name: return
@@ -151,18 +168,18 @@ class DesktopManager:
     def prompt_new_profile(self, widget):
         name, ok = QInputDialog.getText(widget, "New Profile", "Enter profile name:")
         if not ok or not name.strip():
-            return # Cancelled or empty name
+            return # cancelled or empty name
         name = name.strip()
 
-        # Check for duplicates
+        # check for duplicates
         if any(p["name"] == name for p in self.profiles):
             QMessageBox.warning(widget, "Error", f"A profile named '{name}' already exists.")
             return
 
-        # Save current profile
+        # save current profile
         self.save_current_profile()
         
-        # Activate the new profile
+        # activate the new profile
         self.current_profile_name = name
         self.request_save()
 
