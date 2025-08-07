@@ -88,3 +88,14 @@ class MediaWidget(QWidget):
         rect = self.media_display.get_display_size()
         self.setGeometry(self.x(), self.y(), rect.width(), rect.height())
         self.try_save_profile()
+
+    def serialize(self):
+        geom = self.geometry()
+        return {
+            "type": "media",
+            "path": self.image_path,
+            "x": geom.x(),
+            "y": geom.y(),
+            "width": geom.width(),
+            "height": geom.height(),
+        }

@@ -18,36 +18,11 @@ class DesktopManager:
 
     def try_load_default_profile(self):
         default = next((p for p in self.profiles if p["name"] == "Default"), None)
-        if not default:
-            default = self.prompt_for_default_profile()
-            if not default: # user cancelled
-                sys.exit(0)
-            self.profiles.append(default)
-            save_profiles(self.profiles)
-
         self.current_profile_name = "Default"
-        self.load_profile(default)
-
-    def prompt_for_default_profile(self):
-        file_path, _ = QFileDialog.getOpenFileName(
-            None,
-            "Select Image or GIF to Put on Desktop",
-            "",
-            "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)"
-        )
-        if not file_path:
-            return None
-
-        return {
-            "name": "Default",
-            "media": [{
-                "path": file_path,
-                "x": 100,
-                "y": 100,
-                "width": 150,
-                "height": 150
-            }]
-        }
+        if default:
+            self.load_profile(default)
+        else:
+            self.open_file_dialog(None)
 
     def create_widget(self, path):
         callbacks = {
@@ -119,18 +94,21 @@ class DesktopManager:
 
     def load_profile(self, profile):
         self.current_profile_name = profile["name"]
-        media = profile.get("media", [])
-        if not media: return
+        widgets = profile.get("widgets")
+        if not widgets: return
 
         self.delete_all_widgets()
-        for m in media:
-            path = m["path"]
-            x = m.get("x", 100)
-            y = m.get("y", 100)
-            w = m.get("width", 150)
-            h = m.get("height", 150)
-            self.create_widget(path)
-            self.widgets[-1].setGeometry(x, y, w, h)
+        for widget in widgets:
+            if widget["type"] == "media":
+                path = widget["path"]
+                x = widget.get("x", 100)
+                y = widget.get("y", 100)
+                w = widget.get("width", 150)
+                h = widget.get("height", 150)
+                self.create_widget(path)
+                self.widgets[-1].setGeometry(x, y, w, h)
+            else:
+                print("Unknown widget type: "+widget["type"])
         self.request_save()
 
     def request_save(self):
@@ -142,25 +120,20 @@ class DesktopManager:
         self.save_scheduled = False # reset flag
         if not self.current_profile_name: return
 
-        media_data = []
+        widgets = []
         for widget in self.widgets:
-            geom = widget.geometry()
-            media_data.append({
-                "path": widget.image_path,
-                "x": geom.x(),
-                "y": geom.y(),
-                "width": geom.width(),
-                "height": geom.height(),
-            })
+            serialized = widget.serialize()
+            if serialized: # not serialized if None
+                widgets.append(widget.serialize())
 
         for profile in self.profiles:
             if profile["name"] == self.current_profile_name:
-                profile["media"] = media_data
+                profile["widgets"] = widgets
                 break
         else:
             self.profiles.append({
                 "name": self.current_profile_name,
-                "media": media_data
+                "widgets": widgets
             })
 
         save_profiles(self.profiles)
